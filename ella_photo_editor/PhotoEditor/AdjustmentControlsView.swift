@@ -270,63 +270,64 @@ class AdjustmentControl: UIView {
         return label
     }()
     
-    private let slider: UISlider = {
-        let slider = UISlider()
-        slider.translatesAutoresizingMaskIntoConstraints = false
-        return slider
+    private let stepper: UIStepper = {
+        let stepper = UIStepper()
+        stepper.translatesAutoresizingMaskIntoConstraints = false
+        stepper.stepValue = 0.1
+        stepper.isContinuous = true
+        stepper.transform = CGAffineTransform(scaleX: 2.0, y: 1.5) // 放大步进滑块
+        return stepper
     }()
     
     init(type: AdjustmentType) {
         self.type = type
         super.init(frame: .zero)
         setupUI()
+        configureStepper()
     }
     
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
+    private func configureStepper() {
+        stepper.minimumValue = Double(type.range.min)
+        stepper.maximumValue = Double(type.range.max)
+        stepper.value = Double(type.defaultValue)
+        
+        // 根据不同的调整类型设置不同的步进值
+        switch type {
+        case .warmth:
+            stepper.stepValue = 1.0
+        case .exposure, .brightness, .contrast, .highlights, .shadows, .saturation, .vibrance:
+            stepper.stepValue = 0.05
+        case .sharpness, .clarity, .blackPoint, .vignette:
+            stepper.stepValue = 0.05
+        }
+    }
+    
     private func setupUI() {
         addSubview(sliderContainer)
         sliderContainer.addSubview(valueLabel)
-        sliderContainer.addSubview(slider)
+        sliderContainer.addSubview(stepper)
         addSubview(iconImageView)
         addSubview(nameLabel)
         
         iconImageView.image = UIImage(systemName: type.icon)
         nameLabel.text = type.rawValue
         
-        slider.minimumValue = type.range.min
-        slider.maximumValue = type.range.max
-        slider.value = type.defaultValue
-        
         updateValueLabel()
         
-        slider.addTarget(self, action: #selector(sliderValueChanged), for: .valueChanged)
-        slider.addTarget(self, action: #selector(sliderTouchBegan), for: .touchDown)
-        slider.addTarget(self, action: #selector(sliderTouchEnded), for: [.touchUpInside, .touchUpOutside])
+        stepper.addTarget(self, action: #selector(stepperValueChanged), for: .valueChanged)
+        stepper.addTarget(self, action: #selector(stepperTouchBegan), for: .touchDown)
+        stepper.addTarget(self, action: #selector(stepperTouchEnded), for: [.touchUpInside, .touchUpOutside])
         
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(iconTapped))
         iconImageView.addGestureRecognizer(tapGesture)
         
         NSLayoutConstraint.activate([
-            // 滑动条容器约束
-            sliderContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
-            sliderContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
-            sliderContainer.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-            sliderContainer.heightAnchor.constraint(equalToConstant: 50),
-            
-            // 滑动条内部约束
-            valueLabel.topAnchor.constraint(equalTo: sliderContainer.topAnchor, constant: 4),
-            valueLabel.centerXAnchor.constraint(equalTo: sliderContainer.centerXAnchor),
-            
-            slider.topAnchor.constraint(equalTo: valueLabel.bottomAnchor, constant: 4),
-            slider.leadingAnchor.constraint(equalTo: sliderContainer.leadingAnchor, constant: 4),
-            slider.trailingAnchor.constraint(equalTo: sliderContainer.trailingAnchor, constant: -4),
-            slider.heightAnchor.constraint(equalToConstant: 30),
-            
-            // 图标约束
-            iconImageView.topAnchor.constraint(equalTo: sliderContainer.bottomAnchor, constant: 16),
+            // 图标约束 - 将图标移到最上方
+            iconImageView.topAnchor.constraint(equalTo: topAnchor, constant: 44), // 增加顶部间距
             iconImageView.centerXAnchor.constraint(equalTo: centerXAnchor),
             iconImageView.widthAnchor.constraint(equalToConstant: 28),
             iconImageView.heightAnchor.constraint(equalToConstant: 28),
@@ -336,7 +337,22 @@ class AdjustmentControl: UIView {
             nameLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
             nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
             nameLabel.heightAnchor.constraint(equalToConstant: 16),
-            nameLabel.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -8)
+            
+            // 滑动条容器约束 - 移到图标和标签下方
+            sliderContainer.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 8),
+            sliderContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
+            sliderContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
+            sliderContainer.heightAnchor.constraint(equalToConstant: 44),
+            sliderContainer.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
+            
+            // 步进器和标签约束
+            valueLabel.centerYAnchor.constraint(equalTo: sliderContainer.centerYAnchor),
+            valueLabel.centerXAnchor.constraint(equalTo: sliderContainer.centerXAnchor),
+            valueLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 50),
+            
+            stepper.centerYAnchor.constraint(equalTo: sliderContainer.centerYAnchor),
+            stepper.centerXAnchor.constraint(equalTo: sliderContainer.centerXAnchor),
+            stepper.widthAnchor.constraint(equalTo: sliderContainer.widthAnchor, multiplier: 0.8),
         ])
     }
     
@@ -363,7 +379,7 @@ class AdjustmentControl: UIView {
     }
     
     private func updateValueLabel() {
-        let value = slider.value
+        let value = stepper.value
         switch type {
         case .exposure, .brightness, .contrast, .highlights, .shadows, .saturation, .vibrance:
             valueLabel.text = String(format: "%.2f", value)
@@ -374,26 +390,26 @@ class AdjustmentControl: UIView {
         }
     }
     
-    @objc private func sliderValueChanged() {
+    @objc private func stepperValueChanged() {
         updateValueLabel()
-        delegate?.adjustmentValueChanged(type: type, value: slider.value)
+        delegate?.adjustmentValueChanged(type: type, value: Float(stepper.value))
     }
     
-    @objc private func sliderTouchBegan() {
+    @objc private func stepperTouchBegan() {
         delegate?.adjustmentSliderTouchBegan(type: type)
     }
     
-    @objc private func sliderTouchEnded() {
+    @objc private func stepperTouchEnded() {
         delegate?.adjustmentSliderTouchEnded(type: type)
     }
     
     func updateValue(_ value: Float) {
-        slider.value = value
+        stepper.value = Double(value)
         updateValueLabel()
     }
     
     func reset() {
-        slider.value = type.defaultValue
+        stepper.value = Double(type.defaultValue)
         updateValueLabel()
     }
 }

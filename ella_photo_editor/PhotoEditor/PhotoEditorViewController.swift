@@ -370,7 +370,7 @@ class PhotoEditorViewController: UIViewController {
     }
     
     @objc private func undoButtonTapped() {
-        if let (image, filterName) = historyManager.undo() {
+        if let (image, _) = historyManager.undo() {
             currentImage = image
             imageView.image = image
             updateNavigationButtons()
@@ -378,7 +378,7 @@ class PhotoEditorViewController: UIViewController {
     }
     
     @objc private func redoButtonTapped() {
-        if let (image, filterName) = historyManager.redo() {
+        if let (image, _) = historyManager.redo() {
             currentImage = image
             imageView.image = image
             updateNavigationButtons()
