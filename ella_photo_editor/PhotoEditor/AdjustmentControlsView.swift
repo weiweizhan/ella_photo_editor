@@ -87,11 +87,12 @@ enum AdjustmentType: String, CaseIterable {
 class AdjustmentControlsView: UIView {
     weak var delegate: AdjustmentControlsViewDelegate?
     private var sliders: [AdjustmentType: AdjustmentControl] = [:]
+    private var currentActiveControl: AdjustmentControl?
     
     private let collectionView: UICollectionView = {
         let layout = UICollectionViewFlowLayout()
         layout.scrollDirection = .horizontal
-        layout.itemSize = CGSize(width: 80, height: 150)
+        layout.itemSize = CGSize(width: 100, height: 200)
         layout.minimumInteritemSpacing = 12
         layout.sectionInset = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
         
@@ -133,7 +134,21 @@ class AdjustmentControlsView: UIView {
         for type in AdjustmentType.allCases {
             let control = AdjustmentControl(type: type)
             control.delegate = self
+            control.onSliderVisibilityChanged = { [weak self] control, isVisible in
+                self?.handleSliderVisibilityChanged(control, isVisible: isVisible)
+            }
             sliders[type] = control
+        }
+    }
+    
+    private func handleSliderVisibilityChanged(_ control: AdjustmentControl, isVisible: Bool) {
+        if isVisible {
+            if let activeControl = currentActiveControl, activeControl != control {
+                activeControl.hideSlider()
+            }
+            currentActiveControl = control
+        } else if currentActiveControl == control {
+            currentActiveControl = nil
         }
     }
     
@@ -202,10 +217,8 @@ class AdjustmentCell: UICollectionViewCell {
     }
     
     func configure(with control: AdjustmentControl) {
-        // Remove any existing subviews
         containerView.subviews.forEach { $0.removeFromSuperview() }
         
-        // Add the control
         control.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(control)
         
@@ -221,19 +234,30 @@ class AdjustmentCell: UICollectionViewCell {
 class AdjustmentControl: UIView {
     weak var delegate: AdjustmentControlsViewDelegate?
     private let type: AdjustmentType
+    private var isSliderVisible = false
+    var onSliderVisibilityChanged: ((AdjustmentControl, Bool) -> Void)?
     
     private let iconImageView: UIImageView = {
         let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFit
         imageView.tintColor = .label
         imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.isUserInteractionEnabled = true
         return imageView
+    }()
+    
+    private let sliderContainer: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        return view
     }()
     
     private let nameLabel: UILabel = {
         let label = UILabel()
         label.font = .systemFont(ofSize: 12, weight: .medium)
         label.textAlignment = .center
+        label.textColor = .label
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -263,10 +287,11 @@ class AdjustmentControl: UIView {
     }
     
     private func setupUI() {
+        addSubview(sliderContainer)
+        sliderContainer.addSubview(valueLabel)
+        sliderContainer.addSubview(slider)
         addSubview(iconImageView)
         addSubview(nameLabel)
-        addSubview(valueLabel)
-        addSubview(slider)
         
         iconImageView.image = UIImage(systemName: type.icon)
         nameLabel.text = type.rawValue
@@ -281,27 +306,60 @@ class AdjustmentControl: UIView {
         slider.addTarget(self, action: #selector(sliderTouchBegan), for: .touchDown)
         slider.addTarget(self, action: #selector(sliderTouchEnded), for: [.touchUpInside, .touchUpOutside])
         
-        NSLayoutConstraint.activate([
-            iconImageView.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-            iconImageView.centerXAnchor.constraint(equalTo: centerXAnchor),
-            iconImageView.widthAnchor.constraint(equalToConstant: 24),
-            iconImageView.heightAnchor.constraint(equalToConstant: 24),
-            
-            nameLabel.topAnchor.constraint(equalTo: iconImageView.bottomAnchor, constant: 4),
-            nameLabel.leadingAnchor.constraint(equalTo: leadingAnchor),
-            nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor),
-            
-            valueLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
-            valueLabel.leadingAnchor.constraint(equalTo: leadingAnchor),
-            valueLabel.trailingAnchor.constraint(equalTo: trailingAnchor),
-            
-            slider.topAnchor.constraint(equalTo: valueLabel.bottomAnchor, constant: 8),
-            slider.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            slider.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            slider.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8)
-        ])
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(iconTapped))
+        iconImageView.addGestureRecognizer(tapGesture)
         
-        slider.transform = CGAffineTransform(rotationAngle: -CGFloat.pi/2)
+        NSLayoutConstraint.activate([
+            // 滑动条容器约束
+            sliderContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
+            sliderContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
+            sliderContainer.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+            sliderContainer.heightAnchor.constraint(equalToConstant: 50),
+            
+            // 滑动条内部约束
+            valueLabel.topAnchor.constraint(equalTo: sliderContainer.topAnchor, constant: 4),
+            valueLabel.centerXAnchor.constraint(equalTo: sliderContainer.centerXAnchor),
+            
+            slider.topAnchor.constraint(equalTo: valueLabel.bottomAnchor, constant: 4),
+            slider.leadingAnchor.constraint(equalTo: sliderContainer.leadingAnchor, constant: 4),
+            slider.trailingAnchor.constraint(equalTo: sliderContainer.trailingAnchor, constant: -4),
+            slider.heightAnchor.constraint(equalToConstant: 30),
+            
+            // 图标约束
+            iconImageView.topAnchor.constraint(equalTo: sliderContainer.bottomAnchor, constant: 16),
+            iconImageView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            iconImageView.widthAnchor.constraint(equalToConstant: 28),
+            iconImageView.heightAnchor.constraint(equalToConstant: 28),
+            
+            // 名称标签约束
+            nameLabel.topAnchor.constraint(equalTo: iconImageView.bottomAnchor, constant: 4),
+            nameLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            nameLabel.heightAnchor.constraint(equalToConstant: 16),
+            nameLabel.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -8)
+        ])
+    }
+    
+    @objc private func iconTapped() {
+        toggleSlider()
+    }
+    
+    func toggleSlider() {
+        isSliderVisible.toggle()
+        UIView.animate(withDuration: 0.3) {
+            self.sliderContainer.isHidden = !self.isSliderVisible
+        }
+        onSliderVisibilityChanged?(self, isSliderVisible)
+    }
+    
+    func hideSlider() {
+        if isSliderVisible {
+            isSliderVisible = false
+            UIView.animate(withDuration: 0.3) {
+                self.sliderContainer.isHidden = true
+            }
+            onSliderVisibilityChanged?(self, false)
+        }
     }
     
     private func updateValueLabel() {
